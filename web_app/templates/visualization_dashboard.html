@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>养老服务预约数据可视化大屏</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Orbitron:wght@400;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        {{ css_styles }}
+    </style>
+</head>
+<body>
+    <!-- 主容器 -->
+    <div class="dashboard-container">
+        <!-- 网格背景纹理 -->
+        <div class="grid-overlay"></div>
+        
+        <!-- 环境光效 -->
+        <div class="ambient-glow top-glow"></div>
+        <div class="ambient-glow left-glow"></div>
+        <div class="ambient-glow right-glow"></div>
+        
+        <!-- 扫描线 -->
+        <div class="scan-line"></div>
+        
+        <!-- 头部区域 -->
+        <header class="dashboard-header">
+            <div class="header-bg-overlay"></div>
+            <div class="header-bottom-line"></div>
+            
+            <div class="header-left">
+                <div class="location-text">陕西省延安市宝塔区新城街道办事处</div>
+                <div class="system-text">养老服务中心 · 预约管理系统</div>
+            </div>
+            
+            <div class="header-center">
+                <div class="header-decorator">
+                    <div class="decor-line left"></div>
+                    <div class="decor-dots">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
+                    <div class="decor-line right"></div>
+                </div>
+                <h1 class="dashboard-title">养老服务预约数据可视化大屏</h1>
+            </div>
+            
+            <div class="header-right">
+                <div class="header-actions">
+                    <button class="btn-return" onclick="returnToMain()">
+                        <i class="fas fa-arrow-left"></i> 返回主页面
+                    </button>
+                    <div class="clock-container">
+                        <div class="digital-clock" id="currentTime">11:02:35</div>
+                        <div class="date-display" id="currentDate">2026.03.20 星期五</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+        
+        <!-- 主内容区域 - 三栏布局 -->
+        <main class="dashboard-main">
+            <!-- 左侧栏 -->
+            <div class="panel-column left-panel">
+                <!-- 服务类型分布 -->
+                <div class="dashboard-card service-distribution-card">
+                    <div class="section-title">服务类型分布</div>
+                    <div class="chart-container pie-chart-wrapper">
+                        <div class="pie-chart-container" id="serviceTypeChart"></div>
+                        <div class="legend-container">
+                            {% for item in service_type_data %}
+                            <div class="legend-item">
+                                <div class="legend-header">
+                                    <span class="legend-label" style="color: {{ item.color }}">
+                                        <span class="legend-marker" style="color: {{ item.color }}">■</span>{{ item.name }}
+                                    </span>
+                                    <span class="legend-value num-cyan">{{ item.value }}</span>
+                                </div>
+                                <div class="progress-container">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: {{ item.percent }}%; background: {{ item.color }}"></div>
+                                    </div>
+                                </div>
+                                <div class="legend-percent">{{ item.percent }}%</div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 能力评估类型 -->
+                <div class="dashboard-card assessment-type-card">
+                    <div class="section-title">能力评估类型</div>
+                    <div class="chart-container pie-chart-wrapper">
+                        <div class="pie-chart-container small" id="assessmentTypeChart"></div>
+                        <div class="legend-container assessment-legend">
+                            {% for item in assessment_type_data %}
+                            <div class="legend-item">
+                                <div class="legend-header">
+                                    <span class="legend-label" style="color: {{ item.color }}">
+                                        <span class="legend-marker" style="color: {{ item.color }}">◆</span>{{ item.name }}
+                                    </span>
+                                    <span class="legend-value num-cyan">{{ item.value }}</span>
+                                </div>
+                                <div class="progress-container">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: {{ (item.value / 274 * 100) | round(1) }}%; background: {{ item.color }}"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                            <div class="note-text">* 仅统计能力评估类预约</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 服务地区分布 -->
+                <div class="dashboard-card area-distribution-card">
+                    <div class="section-title">服务地区分布</div>
+                    <div class="area-list">
+                        {% for item in area_data %}
+                        {% set colors = ['#00D4FF', '#7B61FF', '#FF6B35', '#39FF14'] %}
+                        <div class="area-item">
+                            <div class="area-header">
+                                <span class="area-name">{{ item.area }}</span>
+                                <div class="area-stats">
+                                    <span class="area-count num-cyan">{{ item.count }}</span>
+                                    <span class="area-percent">({{ item.percent }}%)</span>
+                                </div>
+                            </div>
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {{ item.percent }}%; background: {{ colors[loop.index0] }}"></div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 中间栏 -->
+            <div class="panel-column center-panel">
+                <!-- KPI指标卡片 -->
+                <div class="kpi-row">
+                    <div class="kpi-card kpi-blue anim-1">
+                        <div class="kpi-icon">📋</div>
+                        <div class="kpi-value num-cyan" id="totalAppointments">404</div>
+                        <div class="kpi-label">预约总量</div>
+                        <div class="corner-brackets"></div>
+                    </div>
+                    <div class="kpi-card kpi-green anim-2">
+                        <div class="kpi-icon">✅</div>
+                        <div class="kpi-value num-green" id="processedCount">381</div>
+                        <div class="kpi-label">已处理</div>
+                        <div class="corner-brackets"></div>
+                    </div>
+                    <div class="kpi-card kpi-orange anim-3">
+                        <div class="kpi-icon">⏳</div>
+                        <div class="kpi-value num-orange" id="pendingCount">23</div>
+                        <div class="kpi-label">待处理</div>
+                        <div class="corner-brackets"></div>
+                    </div>
+                    <div class="kpi-card kpi-purple anim-4">
+                        <div class="kpi-icon">📊</div>
+                        <div class="kpi-value num-purple" id="processRate">94.3<span class="kpi-unit">%</span></div>
+                        <div class="kpi-label">处理率</div>
+                        <div class="corner-brackets"></div>
+                    </div>
+                </div>
+                
+                <!-- 日趋势图表 -->
+                <div class="dashboard-card trend-chart-card">
+                    <div class="section-title">预约量日趋势（近期）</div>
+                    <div class="chart-container" id="dailyTrendChart"></div>
+                </div>
+                
+                <!-- 服务状态和星期分布 -->
+                <div class="double-chart-row">
+                    <div class="dashboard-card status-chart-card">
+                        <div class="section-title">服务类型处理状态</div>
+                        <div class="chart-container" id="serviceStatusChart"></div>
+                    </div>
+                    <div class="dashboard-card weekday-chart-card">
+                        <div class="section-title">按星期分布</div>
+                        <div class="chart-container" id="weekdayChart"></div>
+                    </div>
+                </div>
+                
+                <!-- 小时分布图表 -->
+                <div class="dashboard-card hourly-chart-card">
+                    <div class="section-title">创建时段分布（按小时）</div>
+                    <div class="chart-container" id="hourlyChart"></div>
+                </div>
+            </div>
+            
+            <!-- 右侧栏 -->
+            <div class="panel-column right-panel">
+                <!-- 性别分布 -->
+                <div class="dashboard-card gender-distribution-card">
+                    <div class="section-title">服务对象性别分布</div>
+                    <div class="chart-container pie-chart-wrapper">
+                        <div class="pie-chart-container small" id="genderChart"></div>
+                        <div class="legend-container gender-legend">
+                            {% for item in gender_data %}
+                            <div class="legend-item">
+                                <div class="legend-header">
+                                    <span class="legend-label gender-label" style="color: {{ item.color }}">
+                                        {% if item.name == "女性" %}♀ 女性{% else %}♂ 男性{% endif %}
+                                    </span>
+                                    <span class="legend-value num-cyan">
+                                        {{ item.value }}<span class="legend-percent-small">({{ item.percent }}%)</span>
+                                    </span>
+                                </div>
+                                <div class="progress-container">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: {{ item.percent }}%; background: {{ item.color }}"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 年龄段分布 -->
+                <div class="dashboard-card age-distribution-card">
+                    <div class="section-title">服务对象年龄段分布</div>
+                    <div class="chart-container" id="ageChart"></div>
+                </div>
+                
+                <!-- 预约时段偏好 -->
+                <div class="dashboard-card time-preference-card">
+                    <div class="section-title">预约时段偏好</div>
+                    <div class="time-preference-container">
+                        {% for item in time_slot_data %}
+                        <div class="time-slot">
+                            <div class="slot-value num-cyan" style="color: {{ item.color }}">{{ item.count }}</div>
+                            <div class="slot-label">{{ item.slot }}预约</div>
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: {{ (item.count / 404 * 100) | round(1) }}%; background: {{ item.color }}"></div>
+                                </div>
+                            </div>
+                            <div class="slot-percent">{{ (item.count / 404 * 100) | round(1) }}%</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- 近期预约记录 -->
+                <div class="dashboard-card recent-records-card">
+                    <div class="records-header">
+                        <div class="section-title">近期预约记录</div>
+                        <div class="realtime-indicator">
+                            <div class="pulse-dot"></div>
+                            <span class="realtime-text">实时</span>
+                        </div>
+                    </div>
+                    <div class="table-header">
+                        <span class="table-col name-col">姓名</span>
+                        <span class="table-col service-col">服务类型</span>
+                        <span class="table-col time-col">预约时间</span>
+                        <span class="table-col status-col">状态</span>
+                    </div>
+                    <div class="records-table" id="recordsTable">
+                        {% for record in recent_appointments %}
+                        <div class="table-row {% if loop.index0 % 2 == 0 %}even{% endif %}">
+                            <span class="table-cell name-cell">{{ record.name }}</span>
+                            <span class="table-cell service-cell" style="color: {{ record.service_color }}">{{ record.service }}</span>
+                            <span class="table-cell time-cell">{{ record.time }}</span>
+                            <span class="table-cell status-cell" style="color: {{ record.status_color }}">{{ record.status }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- 状态栏 -->
+        <footer class="dashboard-footer">
+            <div class="footer-left">
+                <span class="footer-text">数据来源：延安市宝塔区新城街道办事处养老服务中心预约系统</span>
+            </div>
+            <div class="footer-right">
+                <span class="footer-text">统计周期：2026年1月—3月 · 总记录：404条</span>
+                <div class="system-status">
+                    <div class="status-dot"></div>
+                    <span class="status-text">系统运行正常</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        {{ javascript_code }}
+        
+        // 返回主页面
+        function returnToMain() {
+            window.close();
+            // 如果无法关闭窗口，则跳转到主页面
+            if (window.opener) {
+                window.opener.focus();
+            } else {
+                window.location.href = '/';
+            }
+        }
+        
+        // 页面加载时检查是否有传入数据
+        window.addEventListener('load', function() {
+            // 从localStorage获取数据
+            const storedData = localStorage.getItem('dashboardData');
+            if (storedData) {
+                try {
+                    const data = JSON.parse(storedData);
+                    updateDashboardWithData(data);
+                } catch (e) {
+                    console.error('解析数据失败:', e);
+                }
+            }
+        });
+        
+        // 使用传入数据更新仪表板
+        function updateDashboardWithData(data) {
+            if (!data || !data.records) return;
+            
+            // 更新KPI数据
+            const stats = calculateStats(data.records);
+            updateKPIValues(stats);
+            
+            // 更新图表数据
+            updateChartData(data.records);
+            
+            // 更新表格数据
+            updateTableData(data.records);
+            
+            console.log('仪表板数据已更新:', stats);
+        }
+        
+        // 计算统计数据
+        function calculateStats(records) {
+            const total = records.length;
+            const handled = records.filter(r => r['处理状态'] === '已处理').length;
+            const unhandled = total - handled;
+            const rate = total > 0 ? ((handled / total) * 100).toFixed(1) : 0;
+            
+            return {
+                total: total,
+                handled: handled,
+                unhandled: unhandled,
+                rate: rate
+            };
+        }
+        
+        // 更新KPI数值
+        function updateKPIValues(stats) {
+            animateNumber(document.getElementById('totalAppointments'), 0, stats.total, 2000, 0);
+            animateNumber(document.getElementById('processedCount'), 0, stats.handled, 2000, 200);
+            animateNumber(document.getElementById('pendingCount'), 0, stats.unhandled, 2000, 400);
+            animateNumber(document.getElementById('processRate'), 0, parseFloat(stats.rate), 2000, 600, 1, '%');
+        }
+        
+        // 更新图表数据
+        function updateChartData(records) {
+            // 这里可以更新各个图表的数据
+            // 例如重新绘制饼图、柱状图等
+            console.log('更新图表数据，记录数:', records.length);
+        }
+        
+        // 更新表格数据
+        function updateTableData(records) {
+            // 更新最近预约记录表格
+            const tableBody = document.getElementById('recordsTable');
+            if (tableBody) {
+                // 只显示最新的10条记录
+                const recentRecords = records.slice(0, 10);
+                tableBody.innerHTML = recentRecords.map((record, index) => `
+                    <div class="table-row ${index % 2 === 0 ? 'even' : ''}">
+                        <span class="table-cell name-cell">${record['姓名'] || ''}</span>
+                        <span class="table-cell service-cell" style="color: ${getServiceColor(record['预约服务类型'])}">${record['预约服务类型'] || ''}</span>
+                        <span class="table-cell time-cell">${record['预约时间'] || ''}</span>
+                        <span class="table-cell status-cell" style="color: ${getStatusColor(record['处理状态'])}">${record['处理状态'] || ''}</span>
+                    </div>
+                `).join('');
+            }
+        }
+        
+        // 获取服务类型颜色
+        function getServiceColor(serviceType) {
+            const colorMap = {
+                '能力评估': '#00D4FF',
+                '上门服务': '#7B61FF',
+                '生活照料': '#39FF14'
+            };
+            return colorMap[serviceType] || '#FFFFFF';
+        }
+        
+        // 获取状态颜色
+        function getStatusColor(status) {
+            return status === '已处理' ? '#39FF14' : '#FF6B35';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1976 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>养老服务预约数据采集与分析系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js"></script>
+    <script>
+    // 词云插件加载失败时的备选方案
+    window.addEventListener('load', function() {
+        // 检查词云插件是否加载成功
+        setTimeout(function() {
+            if (typeof echarts !== 'undefined' && echarts.extensions && echarts.extensions.wordCloud) {
+                console.log('词云插件加载成功');
+            } else {
+                console.warn('词云插件加载失败，尝试加载本地备选版本');
+                // 动态加载本地词云插件
+                const script = document.createElement('script');
+                script.src = '/static/js/echarts-wordcloud-local.js';
+                script.onload = function() {
+                    console.log('本地词云插件加载成功');
+                };
+                script.onerror = function() {
+                    console.error('本地词云插件加载也失败');
+                };
+                document.head.appendChild(script);
+            }
+        }, 1000);
+    });
+    </script>
+    
+    <script>
+    // 手动加载本地词云插件的函数
+    function loadLocalWordCloudPlugin() {
+        console.log('尝试手动加载本地词云插件...');
+        
+        const wordCloudContainer = document.getElementById('wordCloudContainer');
+        wordCloudContainer.innerHTML = `
+            <div class="text-center text-muted" style="height: 400px; display: flex; align-items: center; justify-content: center;">
+                <div>
+                    <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                    <p>正在加载本地词云插件...</p>
+                </div>
+            </div>
+        `;
+        
+        // 动态加载本地词云插件
+        const script = document.createElement('script');
+        script.src = '/static/js/echarts-wordcloud-local.js';
+        script.onload = function() {
+            console.log('本地词云插件加载成功');
+            // 重新尝试生成词云
+            if (collectedData && collectedData.records) {
+                generateWordCloud(collectedData.records);
+            } else {
+                wordCloudContainer.innerHTML = `
+                    <div class="text-center text-success" style="height: 400px; display: flex; align-items: center; justify-content: center;">
+                        <div>
+                            <i class="fas fa-check-circle fa-2x mb-2"></i>
+                            <p>本地插件加载成功！</p>
+                            <small class="text-muted">请重新采集数据以生成词云</small>
+                        </div>
+                    </div>
+                `;
+            }
+        };
+        script.onerror = function() {
+            console.error('本地词云插件加载失败');
+            wordCloudContainer.innerHTML = `
+                <div class="text-center text-danger" style="height: 400px; display: flex; align-items: center; justify-content: center;">
+                    <div>
+                        <i class="fas fa-times-circle fa-2x mb-2"></i>
+                        <p>本地插件加载失败</p>
+                        <small class="text-muted">请检查网络连接后刷新页面</small>
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-primary" onclick="location.reload()">
+                                <i class="fas fa-sync-alt me-1"></i>刷新页面
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+        document.head.appendChild(script);
+    }
+    </script>
+    
+    <style>
+        :root {
+            --primary-color: #1890ff;
+            --success-color: #52c41a;
+            --warning-color: #faad14;
+            --danger-color: #f5222d;
+            --info-color: #13c2c2;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            margin: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #096dd9 100%);
+            color: white;
+            border-radius: 20px 20px 0 0;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease;
+            border-left: 5px solid var(--primary-color);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* 处理状态列样式 */
+        #dataTable td {
+            padding: 12px 15px;
+            vertical-align: middle;
+        }
+        
+        /* 状态单元格悬停效果 */
+        #dataTable td[style*="background"] {
+            border-radius: 6px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        
+        #dataTable td[style*="background"]:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        /* 表格行悬停效果 */
+        .table-row-hover {
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .table-row-hover:hover {
+            background-color: rgba(24, 144, 255, 0.08) !important;
+            transform: scale(1.01);
+            box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+        }
+        
+        .table-row-hover:hover td {
+            background-color: transparent !important;
+        }
+        
+        .table-row-hover:hover td:first-child {
+            border-left: 3px solid #1890ff;
+        }
+        
+        /* 序号列特殊样式 */
+        #dataTable td:first-child {
+            border-left: 3px solid transparent;
+            transition: border-color 0.2s ease;
+        }
+        
+        .table-row-hover:hover td:first-child {
+            border-left-color: #1890ff;
+        }
+        
+        /* 状态单元格悬停效果 */
+        .table-row-hover:hover td[style*="background-color"] {
+            transform: scale(1.02);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 1rem;
+        }
+        
+        .chart-container {
+            height: 400px;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            margin-bottom: 25px;
+        }
+        
+        .curl-input {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            min-height: 200px;
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+        
+        .loading-content {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        
+        .progress-bar-custom {
+            height: 10px;
+            border-radius: 5px;
+        }
+        
+        .data-table {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+        
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .status-unhandled {
+            background: #fff7e6;
+            color: #fa8c16;
+            border: 1px solid #ffd591;
+        }
+        
+        .status-handled {
+            background: #f6ffed;
+            color: #52c41a;
+            border: 1px solid #b7eb8f;
+        }
+        
+        .btn-gradient {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #096dd9 100%);
+            border: none;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-gradient:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(24, 144, 255, 0.4);
+            color: white;
+        }
+        
+        /* 自动刷新倒计时样式 */
+        .auto-refresh-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(24, 144, 255, 0.4);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 180px;
+            max-width: 220px;
+        }
+        
+        .auto-refresh-badge.active {
+            display: flex;
+        }
+        
+        /* 倒计时主区域 - 居中显示 */
+        .auto-refresh-badge .countdown-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .auto-refresh-badge .progress-ring {
+            width: 60px;
+            height: 60px;
+        }
+        
+        .auto-refresh-badge .progress-ring-circle {
+            transition: stroke-dashoffset 1s linear;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+        
+        .auto-refresh-badge .timer {
+            font-size: 2rem;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            text-align: center;
+        }
+        
+        .auto-refresh-badge .label {
+            font-size: 0.85rem;
+            opacity: 0.9;
+            text-align: center;
+        }
+        
+        /* 数据源数量 */
+        .auto-refresh-badge .source-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+        
+        .auto-refresh-badge .source-count {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .auto-refresh-badge .stop-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+            flex: 1;
+        }
+        
+        .auto-refresh-badge .stop-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .auto-refresh-badge .stop-btn.danger {
+            background: rgba(245, 34, 45, 0.4);
+        }
+        
+        .auto-refresh-badge .stop-btn.danger:hover {
+            background: rgba(245, 34, 45, 0.6);
+        }
+        
+        .auto-refresh-badge .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .refresh-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #52c41a;
+            border-radius: 50%;
+            margin-right: 5px;
+            animation: pulse 2s infinite;
+        }
+        
+        .refresh-indicator.updating {
+            background: #faad14;
+            animation: blink 0.5s infinite;
+        }
+        
+        /* curl命令列表样式 */
+        .curl-list-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 8px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        
+        .curl-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.8rem;
+            border-radius: 4px;
+        }
+        
+        .curl-item:last-child {
+            border-bottom: none;
+        }
+        
+        .curl-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .curl-item .curl-index {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            flex-shrink: 0;
+        }
+        
+        .curl-item .curl-status-icon {
+            width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        
+        .curl-item .curl-time {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.75rem;
+            flex: 1;
+        }
+        
+        .curl-item.updating {
+            animation: highlight 1s infinite;
+        }
+        
+        @keyframes highlight {
+            0%, 100% { background: transparent; }
+            50% { background: rgba(255, 255, 255, 0.1); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+            <h5 id="loadingTitle">正在处理...</h5>
+            <p id="loadingMessage">请稍候</p>
+            <div class="progress mt-3">
+                <div class="progress-bar progress-bar-striped progress-bar-animated progress-bar-custom" 
+                     role="progressbar" style="width: 0%" id="loadingProgress"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 数据覆盖确认对话框 -->
+    <div class="modal fade" id="dataMergeModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">数据采集选项</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>检测到已有采集的数据，请选择处理方式：</p>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="radio" name="mergeOption" id="overwriteOption" value="overwrite" checked>
+                        <label class="form-check-label" for="overwriteOption">
+                            <strong>覆盖现有数据</strong> - 清空原有数据，重新采集
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="mergeOption" id="appendOption" value="append">
+                        <label class="form-check-label" for="appendOption">
+                            <strong>追加新数据</strong> - 保留原有数据，将新数据合并到现有数据中
+                        </label>
+                    </div>
+                    <div class="alert alert-info mt-3 mb-0">
+                        <small><i class="fas fa-info-circle me-1"></i>当前已有 <span id="currentDataCount">0</span> 条记录</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="proceedWithDataCollection()">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+        
+    <!-- 自动刷新倒计时显示 -->
+    <div class="auto-refresh-badge" id="autoRefreshBadge">
+        <!-- 倒计时主区域 -->
+        <div class="countdown-section">
+            <svg class="progress-ring" viewBox="0 0 60 60">
+                <circle class="progress-ring-background" stroke="rgba(255,255,255,0.3)" stroke-width="4" fill="none" r="26" cx="30" cy="30"/>
+                <circle class="progress-ring-circle" id="progressRing" stroke="white" stroke-width="4" fill="none" r="26" cx="30" cy="30" 
+                        stroke-dasharray="163.36" stroke-dashoffset="0"/>
+            </svg>
+            <div class="timer" id="countdownTimer">120</div>
+            <div class="label">秒后刷新</div>
+        </div>
+        
+        <!-- 数据源数量 -->
+        <div class="source-info">
+            <i class="fas fa-server"></i>
+            <span class="source-count" id="sourceCount">0</span>
+            <span class="label">个数据源</span>
+        </div>
+        
+        <!-- 数据源列表 -->
+        <div class="curl-list-container">
+            <div id="curlListDisplay">
+                <span class="text-muted">无监控源</span>
+            </div>
+        </div>
+        
+        <!-- 控制按钮 -->
+        <div class="btn-group">
+            <button class="stop-btn" id="pauseBtn" onclick="stopAutoRefresh()" title="暂停/继续自动刷新">
+                <i class="fas fa-pause"></i> 暂停
+            </button>
+            <button class="stop-btn danger" onclick="stopAutoRefreshCompletely()" title="停止并清除自动刷新">
+                <i class="fas fa-stop"></i> 停止
+            </button>
+        </div>
+    </div>
+        
+    <div class="container-fluid">
+        <div class="main-container">
+            <!-- 头部 -->
+            <div class="header">
+                <h1><i class="fas fa-database me-3"></i>养老服务预约数据采集与分析系统</h1>
+                <p class="lead mb-0">从全国养老服务信息平台采集数据并进行智能分析</p>
+            </div>
+
+            <div class="container py-4">
+                <!-- 功能介绍 -->
+                <div class="row mb-5">
+                    <div class="col-md-4 text-center">
+                        <div class="feature-icon">
+                            <i class="fas fa-cloud-download-alt"></i>
+                        </div>
+                        <h4>数据采集</h4>
+                        <p class="text-muted">通过curl命令从官方API采集预约数据</p>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="feature-icon">
+                            <i class="fas fa-chart-bar"></i>
+                        </div>
+                        <h4>智能分析</h4>
+                        <p class="text-muted">多维度统计分析，可视化展示</p>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="feature-icon">
+                            <i class="fas fa-file-export"></i>
+                        </div>
+                        <h4>数据导出</h4>
+                        <p class="text-muted">支持CSV、Excel等多种格式导出</p>
+                    </div>
+                </div>
+
+                <!-- 数据输入区域 -->
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-terminal me-2"></i>数据源配置</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="curlInput" class="form-label">粘贴curl命令：</label>
+                            <textarea class="form-control curl-input" id="curlInput" rows="6" 
+                                      placeholder="请在此粘贴从浏览器开发者工具复制的curl命令..."></textarea>
+                            <div class="form-text">
+                                <i class="fas fa-info-circle me-1"></i>
+                                获取方法：浏览器登录 → F12 → Network → reservationPage请求 → 右键 → Copy as cURL
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-gradient" onclick="collectData()">
+                                <i class="fas fa-play me-2"></i>开始采集数据
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="loadSample()">
+                                <i class="fas fa-code me-2"></i>加载示例
+                            </button>
+                            <button class="btn btn-outline-info" onclick="clearInput()">
+                                <i class="fas fa-trash me-2"></i>清空输入
+                            </button>
+                            <button class="btn btn-outline-success" onclick="openVisualization()" id="vizBtn" disabled>
+                                <i class="fas fa-chart-bar me-2"></i>数据可视化
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 统计卡片 -->
+                <div class="row mb-4" id="statsSection" style="display: none;">
+                    <div class="col-md-3">
+                        <div class="stat-card text-center">
+                            <div class="stat-number text-primary" id="totalCount">0</div>
+                            <div class="stat-label">总预约数</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card text-center">
+                            <div class="stat-number text-warning" id="unhandledCount">0</div>
+                            <div class="stat-label">未处理</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card text-center">
+                            <div class="stat-number text-success" id="handledCount">0</div>
+                            <div class="stat-label">已处理</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card text-center">
+                            <div class="stat-number text-info" id="handleRate">0%</div>
+                            <div class="stat-label">处理率</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 图表区域 -->
+                <div id="chartsSection" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="chart-container">
+                                <h5 class="mb-3"><i class="fas fa-chart-pie me-2"></i>处理状态分布</h5>
+                                <div id="statusChart" style="height: 350px;"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="chart-container">
+                                <h5 class="mb-3"><i class="fas fa-chart-bar me-2"></i>服务类型统计</h5>
+                                <div id="serviceChart" style="height: 350px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="chart-container">
+                                <h5 class="mb-3"><i class="fas fa-calendar me-2"></i>预约时间趋势</h5>
+                                <div id="timeChart" style="height: 350px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 地图可视化区域 -->
+                    <div class="row mt-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0"><i class="fas fa-map-marked-alt me-2"></i>预约数据概览</h5>
+                                    <span class="badge bg-primary" id="reservationCount">0</span>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div id="addressMap" style="height: 400px;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 词云分析区域 -->
+                    <div class="row mt-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header bg-white">
+                                    <h5 class="mb-0"><i class="fas fa-cloud me-2"></i>预约区域词云分析</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="wordCloudContainer" style="height: 400px; display: flex; align-items: center; justify-content: center;">
+                                        <div class="text-center text-muted">
+                                            <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                                            <p>正在生成词云分析...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 数据表格 -->
+                <div class="card" id="dataTableSection" style="display: none;">
+                    <div class="card-header bg-light">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap">
+                            <h5 class="mb-0"><i class="fas fa-table me-2"></i>数据明细</h5>
+                            <div class="d-flex flex-wrap gap-2">
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="columnSelector" data-bs-toggle="dropdown">
+                                        <i class="fas fa-columns me-1"></i>显示列
+                                    </button>
+                                    <ul class="dropdown-menu" id="columnOptions">
+                                        <!-- 列选项将通过JavaScript动态生成 -->
+                                    </ul>
+                                </div>
+                                <button class="btn btn-sm btn-outline-success me-2" onclick="exportCSV()">
+                                    <i class="fas fa-file-csv me-1"></i>导出CSV
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="exportExcel()">
+                                    <i class="fas fa-file-excel me-1"></i>导出Excel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="dataTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 60px; text-align: center;">序号</th>
+                                        <th>姓名</th>
+                                        <th>联系电话</th>
+                                        <th>服务类型</th>
+                                        <th>预约时间</th>
+                                        <th>居住地址</th>
+                                        <th style="width: 100px;">状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dataTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 全局变量
+        let collectedData = null;
+        let charts = {};
+        let mapVisualizer = null;
+        let pendingCurlCommand = ''; // 存储待处理的curl命令
+        let mergeMode = 'overwrite'; // 数据合并模式: 'overwrite' 或 'append'
+        
+        // 自动刷新相关变量
+        let autoRefreshTimer = null;        // 定时器
+        let countdownInterval = null;       // 倒计时interval
+        let countdownSeconds = 120;          // 倒计时秒数
+        const REFRESH_INTERVAL = 120;        // 刷新间隔（秒）
+        let savedCurlCommands = [];         // 保存的多个curl命令用于自动刷新
+        let lastDataHash = '';              // 上次数据哈希值，用于检测变化
+        
+        // 计算数据哈希值
+        function calculateDataHash(data) {
+            if (!data || !data.records) return '';
+            const str = JSON.stringify(data.records.map(r => ({
+                id: r['预约单号'],
+                status: r['处理状态'],
+                name: r['姓名'],
+                time: r['创建时间']
+            })).sort((a, b) => a.id.localeCompare(b.id)));
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return hash.toString();
+        }
+        
+        // 检查数据是否有变化
+        function hasDataChanged(newData) {
+            const newHash = calculateDataHash(newData);
+            if (newHash !== lastDataHash) {
+                lastDataHash = newHash;
+                return true;
+            }
+            return false;
+        }
+        
+        // 添加curl命令到监控列表
+        function addCurlCommand(curlCommand) {
+            // 检查是否已存在
+            const exists = savedCurlCommands.some(cmd => cmd.command === curlCommand);
+            if (!exists) {
+                savedCurlCommands.push({
+                    command: curlCommand,
+                    lastRefresh: null,
+                    status: 'pending',
+                    addedTime: new Date().toLocaleTimeString()
+                });
+            }
+            updateCurlListDisplay();
+        }
+        
+        // 更新curl命令列表显示
+        function updateCurlListDisplay() {
+            const listEl = document.getElementById('curlListDisplay');
+            const sourceCountEl = document.getElementById('sourceCount');
+            
+            // 更新数据源数量
+            if (sourceCountEl) {
+                sourceCountEl.textContent = savedCurlCommands.length;
+            }
+            
+            if (listEl) {
+                if (savedCurlCommands.length > 0) {
+                    listEl.innerHTML = savedCurlCommands.map((cmd, idx) => `
+                        <div class="curl-item ${cmd.status}">
+                            <span class="curl-index">${idx + 1}</span>
+                            <span class="curl-status-icon">
+                                ${cmd.status === 'success' ? '<i class="fas fa-check-circle text-success"></i>' : 
+                                  cmd.status === 'error' ? '<i class="fas fa-times-circle text-danger"></i>' :
+                                  cmd.status === 'updating' ? '<i class="fas fa-sync fa-spin text-warning"></i>' :
+                                  '<i class="fas fa-clock text-muted"></i>'}
+                            </span>
+                            <span class="curl-time">${cmd.lastRefresh || '未刷新'}</span>
+                            <button onclick="removeCurlCommand(${idx})" class="btn btn-sm" style="padding: 0 5px; background: transparent; color: rgba(255,255,255,0.5); margin-left: auto;">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    `).join('');
+                } else {
+                    listEl.innerHTML = '<span class="text-muted">无监控源</span>';
+                }
+            }
+        }
+        
+        // 启动自动刷新
+        function startAutoRefresh(curlCommand) {
+            // 检查是否需要启动定时器
+            const needsNewTimer = !countdownInterval && !isPaused;
+            
+            // 添加curl命令到列表（会检查重复）
+            addCurlCommand(curlCommand);
+            
+            // 只有在定时器未运行时才启动
+            if (needsNewTimer) {
+                // 显示倒计时badge
+                const badge = document.getElementById('autoRefreshBadge');
+                badge.classList.add('active');
+                
+                // 初始化倒计时
+                countdownSeconds = REFRESH_INTERVAL;
+                updateCountdownDisplay();
+                
+                // 启动倒计时
+                countdownInterval = setInterval(() => {
+                    countdownSeconds--;
+                                
+                    // 确保不会出现负数
+                    if (countdownSeconds < 0) {
+                        countdownSeconds = 0;
+                    }
+                                
+                    updateCountdownDisplay();
+                                
+                    // 更新进度环
+                    const progress = (REFRESH_INTERVAL - countdownSeconds) / REFRESH_INTERVAL;
+                    updateProgressRing(progress);
+                                
+                    if (countdownSeconds <= 0) {
+                        // 执行自动刷新
+                        performAutoRefresh();
+                    }
+                }, 1000);
+            }
+            
+            // 保存curl命令到输入框（如果为空）
+            if (!document.getElementById('curlInput').value.trim()) {
+                document.getElementById('curlInput').value = curlCommand;
+            }
+        }
+        
+        // 更新倒计时显示
+        function updateCountdownDisplay() {
+            document.getElementById('countdownTimer').textContent = countdownSeconds;
+        }
+        
+        // 更新进度环
+        function updateProgressRing(progress) {
+            const circle = document.getElementById('progressRing');
+            const circumference = 163.36; // 2 * PI * 26
+            const offset = circumference * (1 - progress);
+            circle.style.strokeDashoffset = offset;
+        }
+        
+        // 执行自动刷新
+        async function performAutoRefresh() {
+            if (savedCurlCommands.length === 0) return;
+            
+            console.log('执行自动刷新，共', savedCurlCommands.length, '个数据源...');
+            
+            // 更新状态为刷新中
+            savedCurlCommands.forEach(cmd => cmd.status = 'updating');
+            updateCurlListDisplay();
+            
+            let hasAnyChange = false;
+            
+            try {
+                // 遍历所有curl命令进行刷新
+                for (const curlItem of savedCurlCommands) {
+                    try {
+                        const response = await fetch('/api/collect', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ 
+                                curl: curlItem.command,
+                                mode: 'append'  // 自动刷新使用追加模式
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            
+                            if (result.success) {
+                                // 检查数据是否有变化
+                                if (hasDataChanged(result.data)) {
+                                    // 数据有变化，更新界面
+                                    mergeCollectedData(result.data);
+                                    hasAnyChange = true;
+                                }
+                                curlItem.status = 'success';
+                                curlItem.lastRefresh = new Date().toLocaleTimeString();
+                            } else {
+                                curlItem.status = 'error';
+                            }
+                        } else {
+                            curlItem.status = 'error';
+                        }
+                    } catch (error) {
+                        console.error('刷新失败:', error);
+                        curlItem.status = 'error';
+                    }
+                }
+                
+                // 如果有变化，更新界面
+                if (hasAnyChange) {
+                    renderData(collectedData);
+                    console.log('数据已更新，共', collectedData.records.length, '条记录');
+                } else {
+                    console.log('所有数据源均无变化');
+                }
+                
+            } catch (error) {
+                console.error('自动刷新过程出错:', error);
+            }
+            
+            // 重置倒计时
+            countdownSeconds = REFRESH_INTERVAL;
+            updateCountdownDisplay();
+            updateProgressRing(0);
+            
+            // 更新状态显示
+            updateCurlListDisplay();
+        }
+        
+        // 停止自动刷新
+        let isPaused = false;
+        function stopAutoRefresh() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            
+            if (isPaused) {
+                // 继续自动刷新
+                isPaused = false;
+                const badge = document.getElementById('autoRefreshBadge');
+                badge.classList.add('active');
+                
+                // 重新启动倒计时
+                countdownInterval = setInterval(() => {
+                    countdownSeconds--;
+                    updateCountdownDisplay();
+                    
+                    const progress = (REFRESH_INTERVAL - countdownSeconds) / REFRESH_INTERVAL;
+                    updateProgressRing(progress);
+                    
+                    if (countdownSeconds <= 0) {
+                        performAutoRefresh();
+                    }
+                }, 1000);
+                
+                // 更新按钮文字
+                document.getElementById('pauseBtn').innerHTML = '<i class="fas fa-pause"></i> 暂停';
+            } else {
+                // 暂停自动刷新
+                isPaused = true;
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+                
+                // 更新按钮文字
+                document.getElementById('pauseBtn').innerHTML = '<i class="fas fa-play"></i> 继续';
+            }
+        }
+        
+        // 完全停止自动刷新（清除所有状态）
+        function stopAutoRefreshCompletely() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+                autoRefreshTimer = null;
+            }
+            
+            isPaused = false;
+            savedCurlCommands = [];  // 清空所有curl命令
+            lastDataHash = '';
+            
+            // 隐藏badge
+            const badge = document.getElementById('autoRefreshBadge');
+            badge.classList.remove('active');
+            
+            // 重置进度环
+            updateProgressRing(0);
+            
+            // 重置按钮文字
+            document.getElementById('pauseBtn').innerHTML = '<i class="fas fa-pause"></i> 暂停';
+            
+            // 更新显示
+            updateCurlListDisplay();
+        }
+        
+        // 移除单个curl命令
+        function removeCurlCommand(index) {
+            if (index >= 0 && index < savedCurlCommands.length) {
+                savedCurlCommands.splice(index, 1);
+                updateCurlListDisplay();
+                
+                // 如果没有命令了，停止刷新
+                if (savedCurlCommands.length === 0) {
+                    stopAutoRefreshCompletely();
+                }
+            }
+        }
+        
+        // 打开可视化页面
+        function openVisualization() {
+            if (collectedData && collectedData.records && collectedData.records.length > 0) {
+                // 将数据存储到localStorage以便可视化页面使用
+                localStorage.setItem('dashboardData', JSON.stringify(collectedData));
+                window.open('/visualization', '_blank');
+            } else {
+                alert('请先采集数据后再打开可视化页面');
+            }
+        }
+        
+        // 更新可视化按钮状态
+        function updateVizButtonState() {
+            const vizBtn = document.getElementById('vizBtn');
+            if (vizBtn) {
+                if (collectedData && collectedData.records && collectedData.records.length > 0) {
+                    vizBtn.disabled = false;
+                    vizBtn.classList.remove('btn-outline-success');
+                    vizBtn.classList.add('btn-success');
+                } else {
+                    vizBtn.disabled = true;
+                    vizBtn.classList.remove('btn-success');
+                    vizBtn.classList.add('btn-outline-success');
+                }
+            }
+        }
+        let columnSettings = {
+            '序号': true,  // 添加序号列
+            '姓名': true,
+            '人员手机号': true,
+            '预约服务类型': true,
+            '预约时间': true,
+            '服务地址': true,
+            '处理状态': true,
+            '创建时间': false,
+            '服务机构名称': true,
+            '服务机构地址': false,
+            '原始服务地址': false,
+            '预约单号': false,
+            '公民身份号码': false,
+            '是否处理': false,
+            '是否真实': false,
+            '服务类型编码': false,
+            '服务内容类型': false,
+            '确认时间': false,
+            '备注': false,
+            '回复信息': false,
+            '评估类型': false,
+            '来访人数': false
+        };
+
+        // 加载示例数据
+        function loadSample() {
+            const sampleCurl = `curl 'https://ylfw.mca.gov.cn/ylapi/ylptjg/personServiceApply/reservationPage' \\
+  -H 'Accept: application/json, text/plain, */*' \\
+  -H 'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8' \\
+  -H 'Authorization: Bearer da0f1133-b1b4-4763-8241-406f54873705' \\
+  -H 'Connection: keep-alive' \\
+  -H 'Content-Type: application/x-www-form-urlencoded' \\
+  -b 'https_waf_cookie=c1d071b6-1438-4a59d167df2cb8c6ded84708f51849c67f61' \\
+  -H 'Origin: https://ylfw.mca.gov.cn' \\
+  -H 'Referer: https://ylfw.mca.gov.cn/' \\
+  -H 'Sec-Fetch-Dest: empty' \\
+  -H 'Sec-Fetch-Mode: cors' \\
+  -H 'Sec-Fetch-Site: same-origin' \\
+  -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36' \\
+  -H 'sec-ch-ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"' \\
+  -H 'sec-ch-ua-mobile: ?0' \\
+  -H 'sec-ch-ua-platform: "macOS"' \\
+  --data-raw 'current=1&size=20&ifHandle=0'`;
+            
+            document.getElementById('curlInput').value = sampleCurl;
+        }
+
+        // 清空输入
+        function clearInput() {
+            document.getElementById('curlInput').value = '';
+        }
+        
+        // 确认数据采集
+        function proceedWithDataCollection() {
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('dataMergeModal'));
+            modal.hide();
+            
+            // 获取用户选择
+            const selectedOption = document.querySelector('input[name="mergeOption"]:checked').value;
+            mergeMode = selectedOption;
+            
+            // 执行采集
+            executeDataCollection(pendingCurlCommand, selectedOption);
+        }
+        
+        // 合并数据
+        function mergeCollectedData(newData) {
+            if (!collectedData) {
+                collectedData = newData;
+                return;
+            }
+            
+            // 合并记录
+            const existingIds = new Set(collectedData.records.map(r => r['预约单号']));
+            const newRecords = newData.records.filter(r => !existingIds.has(r['预约单号']));
+            
+            collectedData.records = [...collectedData.records, ...newRecords];
+            collectedData.stats.total_count = collectedData.records.length;
+            collectedData.stats.unhandled_count = collectedData.records.filter(r => r['处理状态'] === '未处理').length;
+            collectedData.stats.handled_count = collectedData.records.filter(r => r['处理状态'] === '已处理').length;
+            
+            // 重新计算处理率
+            if (collectedData.stats.total_count > 0) {
+                collectedData.stats.handle_rate = Math.round((collectedData.stats.handled_count / collectedData.stats.total_count) * 100) + '%';
+            } else {
+                collectedData.stats.handle_rate = '0%';
+            }
+        }
+
+        // 显示加载状态
+        function showLoading(title, message, progress = 0) {
+            document.getElementById('loadingTitle').textContent = title;
+            document.getElementById('loadingMessage').textContent = message;
+            document.getElementById('loadingProgress').style.width = progress + '%';
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+
+        // 隐藏加载状态
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        // 采集数据
+        async function collectData() {
+            const curlCommand = document.getElementById('curlInput').value.trim();
+            
+            if (!curlCommand) {
+                alert('请输入curl命令');
+                return;
+            }
+
+            // 检查是否已有数据
+            if (collectedData && collectedData.records && collectedData.records.length > 0) {
+                // 显示确认对话框
+                pendingCurlCommand = curlCommand;
+                document.getElementById('currentDataCount').textContent = collectedData.records.length;
+                
+                // 显示模态框
+                const modal = new bootstrap.Modal(document.getElementById('dataMergeModal'));
+                modal.show();
+                return;
+            }
+
+            // 直接采集数据
+            await executeDataCollection(curlCommand, 'overwrite');
+        }
+
+        // 执行数据采集
+        async function executeDataCollection(curlCommand, mode) {
+            try {
+                // 显示加载状态
+                showLoading('数据采集中', '正在连接API服务器...', 20);
+                
+                const response = await fetch('/api/collect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        curl: curlCommand,
+                        mode: mode  // 添加模式参数
+                    })
+                });
+                
+                // 检查HTTP响应状态
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                showLoading('数据处理中', '正在分析和整理数据...', 60);
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // 根据模式处理数据
+                    if (mergeMode === 'append') {
+                        mergeCollectedData(result.data);
+                        showLoading('合并数据中', '正在合并新数据...', 80);
+                    } else {
+                        collectedData = result.data;
+                    }
+                    
+                    showLoading('渲染界面中', '正在生成可视化图表...', 90);
+                    renderData(collectedData);
+                    showLoading('完成', `${mergeMode === 'append' ? '数据合并' : '数据采集'}完成！当前共 ${collectedData.records.length} 条记录`, 100);
+                    setTimeout(hideLoading, 1000);
+                    
+                    // 追加模式：添加新的curl命令到监控列表
+                    if (mergeMode === 'append') {
+                        addCurlCommand(curlCommand);
+                        // 如果定时器未启动，启动它
+                        if (!countdownInterval && !isPaused) {
+                            startAutoRefresh(curlCommand);
+                        }
+                    } else {
+                        // 首次采集或覆盖模式：启动自动刷新
+                        startAutoRefresh(curlCommand);
+                    }
+                } else {
+                    throw new Error(result.error || '数据采集失败');
+                }
+            } catch (error) {
+                hideLoading();
+                console.error('采集错误:', error);
+                alert(`采集过程中发生错误: ${error.message}`);
+            }
+        }
+
+        // 渲染数据
+        function renderData(data) {
+            // 更新统计卡片
+            document.getElementById('totalCount').textContent = data.stats.total_count;
+            document.getElementById('unhandledCount').textContent = data.stats.unhandled_count;
+            document.getElementById('handledCount').textContent = data.stats.handled_count;
+            document.getElementById('handleRate').textContent = data.stats.handle_rate || '0%';
+
+            // 显示各区域
+            document.getElementById('statsSection').style.display = 'flex';
+            document.getElementById('chartsSection').style.display = 'block';
+            document.getElementById('dataTableSection').style.display = 'block';
+
+            // 渲染图表
+            renderCharts(data);
+            
+            // 渲染表格
+            renderTable(data.records);
+            
+            // 更新可视化按钮状态
+            updateVizButtonState();
+        }
+
+        // 渲染图表
+        function renderCharts(data) {
+            // 处理状态饼图
+            const statusChart = echarts.init(document.getElementById('statusChart'));
+            statusChart.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    formatter: '{a} <br/>{b}: {c} ({d}%)'
+                },
+                legend: {
+                    orient: 'vertical',
+                    left: 'left'
+                },
+                series: [{
+                    name: '处理状态',
+                    type: 'pie',
+                    radius: ['40%', '70%'],
+                    data: [
+                        {value: data.stats.unhandled_count, name: '未处理'},
+                        {value: data.stats.handled_count, name: '已处理'}
+                    ],
+                    emphasis: {
+                        itemStyle: {
+                            shadowBlur: 10,
+                            shadowOffsetX: 0,
+                            shadowColor: 'rgba(0, 0, 0, 0.5)'
+                        }
+                    }
+                }]
+            });
+
+            // 服务类型柱状图
+            const serviceChart = echarts.init(document.getElementById('serviceChart'));
+            const serviceData = Object.entries(data.stats.service_types)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            serviceChart.setOption({
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: serviceData.map(item => item[0]),
+                    axisLabel: {
+                        rotate: 45
+                    }
+                },
+                yAxis: {
+                    type: 'value'
+                },
+                series: [{
+                    name: '预约数量',
+                    type: 'bar',
+                    data: serviceData.map(item => item[1]),
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            {offset: 0, color: '#83bff6'},
+                            {offset: 0.5, color: '#188df0'},
+                            {offset: 1, color: '#188df0'}
+                        ])
+                    }
+                }]
+            });
+
+            // 时间趋势图
+            const timeChart = echarts.init(document.getElementById('timeChart'));
+            const timeData = Object.entries(data.stats.daily_stats)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .slice(-30); // 最近30天
+            
+            timeChart.setOption({
+                tooltip: {
+                    trigger: 'axis'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: timeData.map(item => item[0])
+                },
+                yAxis: {
+                    type: 'value'
+                },
+                series: [{
+                    name: '预约数量',
+                    type: 'line',
+                    data: timeData.map(item => item[1]),
+                    smooth: true,
+                    areaStyle: {
+                        opacity: 0.3
+                    }
+                }]
+            });
+
+            // 保存图表实例
+            charts = { statusChart, serviceChart, timeChart };
+
+            // 更新地图显示预约总数
+            updateMapWithReservationCount();
+            
+            // 生成词云分析
+            generateWordCloud(data.records);
+
+            // 响应式调整
+            window.addEventListener('resize', () => {
+                Object.values(charts).forEach(chart => chart.resize());
+                // 词云图表也需要响应式调整
+                const wordCloudChart = echarts.getInstanceByDom(document.getElementById('wordCloudContainer'));
+                if (wordCloudChart) {
+                    wordCloudChart.resize();
+                }
+            });
+        }
+
+        // 渲染表格
+        function renderTable(records) {
+            const tbody = document.getElementById('dataTableBody');
+            if (!tbody) {
+                console.error('找不到dataTableBody元素');
+                return;
+            }
+            tbody.innerHTML = '';
+            
+            // 获取需要显示的列
+            const visibleColumns = Object.keys(columnSettings).filter(col => columnSettings[col]);
+            
+            // 更新表头
+            const theadRow = document.querySelector('#dataTable thead tr');
+            if (theadRow) {
+                theadRow.innerHTML = '';
+                visibleColumns.forEach(column => {
+                    const th = document.createElement('th');
+                    th.textContent = column;
+                    theadRow.appendChild(th);
+                });
+            } else {
+                console.warn('找不到表头行元素');
+            }
+            
+            // 按处理状态排序：未处理优先，然后按序号排序
+            const sortedRecords = [...records].sort((a, b) => {
+                const statusA = a['处理状态'] || '';
+                const statusB = b['处理状态'] || '';
+                
+                // 未处理优先
+                if (statusA === '未处理' && statusB !== '未处理') return -1;
+                if (statusA !== '未处理' && statusB === '未处理') return 1;
+                
+                // 未处理的情况下按创建时间降序排列
+                if (statusA === '未处理' && statusB === '未处理') {
+                    const timeA = a['创建时间'] || '';
+                    const timeB = b['创建时间'] || '';
+                    return timeB.localeCompare(timeA); // 降序
+                }
+                
+                return 0;
+            });
+            
+            // 显示所有记录
+            const displayRecords = sortedRecords;
+            
+            displayRecords.forEach((record, index) => {
+                const row = document.createElement('tr');
+                row.className = 'table-row-hover'; // 添加hover样式类
+                
+                // 计算序号（基于排序后的位置）
+                const serialNumber = index + 1;
+                
+                visibleColumns.forEach(column => {
+                    const td = document.createElement('td');
+                    
+                    // 处理序号列
+                    if (column === '序号') {
+                        td.textContent = serialNumber;
+                        td.style.fontWeight = 'bold';
+                        td.style.textAlign = 'center';
+                        td.style.color = '#1890ff';
+                    }
+                    // 特殊处理手机号脱敏
+                    else if (column === '人员手机号') {
+                        let value = record[column] || '-';
+                        value = maskPhone(value);
+                        td.textContent = value;
+                    }
+                    // 特殊处理身份证号脱敏（显示前6位+****+后4位）
+                    else if (column === '公民身份号码') {
+                        let value = record[column] || '-';
+                        value = maskIdCard(value);
+                        td.textContent = value;
+                    }
+                    // 特殊处理状态列背景色
+                    else if (column === '处理状态') {
+                        let value = record[column] || '-';
+                        td.textContent = value;
+                        if (value === '已处理') {
+                            td.style.backgroundColor = '#e8f5e9'; // 绿色背景
+                            td.style.color = '#2e7d32'; // 深绿色文字
+                            td.style.fontWeight = '500';
+                        } else if (value === '未处理') {
+                            td.style.backgroundColor = '#fff3e0'; // 橙色背景
+                            td.style.color = '#ef6c00'; // 深橙色文字
+                            td.style.fontWeight = '500';
+                        }
+                    } else {
+                        let value = record[column] || '-';
+                        td.textContent = value;
+                    }
+                    
+                    row.appendChild(td);
+                });
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // 手机号脱敏
+        function maskPhone(phone) {
+            if (!phone || phone.length < 7) return phone;
+            return phone.substring(0, 3) + '****' + phone.substring(7);
+        }
+        
+        // 身份证号脱敏（显示前6位+****+后4位）
+        function maskIdCard(idCard) {
+            if (!idCard || idCard.length < 10) return idCard;
+            return idCard.substring(0, 6) + '****' + idCard.substring(idCard.length - 4);
+        }
+        
+        // 生成词云分析
+        function generateWordCloud(records) {
+            try {
+                console.log('开始生成词云分析，记录数:', records.length);
+                
+                // 提取原始服务地址并统计词频
+                const addressStats = {};
+                let validAddressCount = 0;
+                
+                records.forEach((record, index) => {
+                    // 尝试多种地址字段
+                    const address = record['原始服务地址'] || 
+                                   record['服务地址'] || 
+                                   record['liveAddress'] || 
+                                   record['liveaddress'] || '';
+                    
+                    console.log(`记录${index + 1}: 地址字段值 = "${address}"`);
+                    
+                    if (address && typeof address === 'string' && address.trim()) {
+                        validAddressCount++;
+                        // 简单的地址关键词提取
+                        const keywords = extractAddressKeywords(address);
+                        keywords.forEach(keyword => {
+                            if (keyword.length > 1) { // 过滤单字符
+                                addressStats[keyword] = (addressStats[keyword] || 0) + 1;
+                            }
+                        });
+                    }
+                });
+                
+                console.log('有效地址记录数:', validAddressCount);
+                console.log('提取的关键词统计:', addressStats);
+                
+                // 转换为词云数据格式
+                const wordCloudData = Object.entries(addressStats)
+                    .map(([text, weight]) => ({
+                        name: text,
+                        value: weight
+                    }))
+                    .sort((a, b) => b.value - a.value)
+                    .slice(0, 100); // 限制显示前100个词
+                
+                if (wordCloudData.length === 0) {
+                    console.log('词云数据为空，显示提示信息');
+                    let message = '暂无地址数据可用于词云分析';
+                    if (records.length > 0 && validAddressCount === 0) {
+                        message = `共${records.length}条记录，但未找到有效的地址字段数据`;
+                    }
+                    
+                    document.getElementById('wordCloudContainer').innerHTML = `
+                        <div class="text-center text-muted" style="height: 400px; display: flex; align-items: center; justify-content: center;">
+                            <div>
+                                <i class="fas fa-exclamation-circle fa-2x mb-2"></i>
+                                <p>${message}</p>
+                                <small class="text-muted">请检查数据中的地址字段是否存在且包含有效内容</small>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // 初始化词云图表
+                console.log('初始化词云图表，数据项数:', wordCloudData.length);
+                console.log('前5个词云数据:', wordCloudData.slice(0, 5));
+                
+                const wordCloudChart = echarts.init(document.getElementById('wordCloudContainer'));
+                
+                // 检查词云插件是否加载
+                let wordCloudAvailable = false;
+                
+                // 方法1: 检查extensions
+                if (typeof echarts.extensions !== 'undefined' && echarts.extensions.wordCloud) {
+                    wordCloudAvailable = true;
+                    console.log('检测到CDN词云插件');
+                }
+                
+                // 方法2: 检查series注册
+                if (!wordCloudAvailable && typeof echarts.series !== 'undefined' && echarts.series.wordCloud) {
+                    wordCloudAvailable = true;
+                    console.log('检测到本地词云插件');
+                }
+                
+                // 方法3: 检查全局注册
+                if (!wordCloudAvailable) {
+                    try {
+                        // 尝试创建一个词云图表实例来检测
+                        const testChart = echarts.init(document.createElement('div'));
+                        testChart.setOption({
+                            series: [{
+                                type: 'wordCloud',
+                                data: [{name: 'test', value: 1}]
+                            }]
+                        });
+                        wordCloudAvailable = true;
+                        console.log('通过实例测试检测到词云功能');
+                        testChart.dispose();
+                    } catch (e) {
+                        console.log('词云功能测试失败:', e.message);
+                    }
+                }
+                
+                if (!wordCloudAvailable) {
+                    console.error('词云插件未正确加载！');
+                    document.getElementById('wordCloudContainer').innerHTML = `
+                        <div class="text-center text-danger" style="height: 400px; display: flex; align-items: center; justify-content: center;">
+                            <div>
+                                <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                                <p>词云插件加载失败</p>
+                                <small class="text-muted">请尝试以下解决方案：</small>
+                                <div class="mt-3 d-flex flex-column gap-2">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="location.reload()">
+                                        <i class="fas fa-sync-alt me-1"></i>刷新页面
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-success" onclick="loadLocalWordCloudPlugin()">
+                                        <i class="fas fa-download me-1"></i>加载本地插件
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                wordCloudChart.setOption({
+                    tooltip: {
+                        show: true,
+                        formatter: function(params) {
+                            return `${params.name}: ${params.value} 次预约`;
+                        }
+                    },
+                    series: [{
+                        type: 'wordCloud',
+                        gridSize: 8,
+                        sizeRange: [12, 60],
+                        rotationRange: [-45, 45],
+                        shape: 'circle',
+                        textStyle: {
+                            fontFamily: 'sans-serif',
+                            fontWeight: 'bold',
+                            color: function() {
+                                // 随机颜色
+                                return 'rgb(' + [
+                                    Math.round(Math.random() * 160),
+                                    Math.round(Math.random() * 160),
+                                    Math.round(Math.random() * 160)
+                                ].join(',') + ')';
+                            }
+                        },
+                        emphasis: {
+                            textStyle: {
+                                shadowBlur: 10,
+                                shadowColor: '#333'
+                            }
+                        },
+                        data: wordCloudData
+                    }]
+                });
+                
+            } catch (error) {
+                console.error('生成词云失败:', error);
+                document.getElementById('wordCloudContainer').innerHTML = `
+                    <div class="text-center text-danger" style="height: 400px; display: flex; align-items: center; justify-content: center;">
+                        <div>
+                            <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                            <p>词云生成失败: ${error.message}</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // 提取地址关键词
+        function extractAddressKeywords(address) {
+            // 移除常见的地址前缀和后缀
+            let cleanAddress = address
+                .replace(/^(陕西省|陕西)/, '')
+                .replace(/^(延安市|延安)/, '')
+                .replace(/^(宝塔区|宝塔)/, '')
+                .replace(/[市县区镇村街道路巷号栋单元室号楼]/g, ' ')
+                .trim();
+            
+            // 分割关键词
+            let keywords = cleanAddress
+                .split(/\s+/)
+                .filter(word => word.length > 0)
+                .map(word => word.replace(/[^一-龥a-zA-Z0-9]/g, '')) // 只保留中文、英文、数字
+                .filter(word => {
+                    // 过滤条件：
+                    // 1. 长度至少2个字符
+                    // 2. 不是纯数字或主要是数字
+                    // 3. 不是常见的门牌号模式
+                    // 4. 保留有意义的地名关键词
+                    if (word.length < 2) return false;
+                    
+                    // 检查是否为纯数字或大部分是数字
+                    const digitCount = (word.match(/\d/g) || []).length;
+                    if (digitCount >= word.length * 0.8) return false; // 数字占比超过80%则过滤
+                    
+                    // 过滤常见的纯数字组合
+                    const pureNumberPatterns = [/^\d+$/, /^\d{3,}$/, /^[1-9]\d*$/];
+                    for (let pattern of pureNumberPatterns) {
+                        if (pattern.test(word)) return false;
+                    }
+                    
+                    // 保留有意义的地名关键词（包含中文字符优先保留）
+                    const hasChinese = /[一-龥]/.test(word);
+                    const hasLetters = /[a-zA-Z]/.test(word);
+                    
+                    // 如果包含中文字符，优先保留
+                    if (hasChinese) return true;
+                    
+                    // 如果是字母组合且长度>=3，可能是有意义的地名缩写
+                    if (hasLetters && word.length >= 3) return true;
+                    
+                    // 其他情况过滤掉
+                    return false;
+                });
+            
+            return keywords;
+        }
+
+        // 导出CSV
+        function exportCSV() {
+            if (!collectedData) {
+                alert('请先采集数据');
+                return;
+            }
+            
+            fetch('/api/export/csv', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(collectedData)
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `预约数据_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            });
+        }
+
+        // 导出Excel
+        function exportExcel() {
+            if (!collectedData) {
+                alert('请先采集数据');
+                return;
+            }
+            
+            fetch('/api/export/excel', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(collectedData)
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `预约数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            });
+        }
+
+        // 更新地图显示预约总数
+        function updateMapWithReservationCount() {
+            if (!mapVisualizer || !collectedData) return;
+            
+            // 显示预约总数
+            mapVisualizer.showReservationCount(collectedData.records);
+            
+            // 更新计数显示
+            const countElement = document.getElementById('reservationCount');
+            if (countElement) {
+                countElement.textContent = collectedData.records.length;
+            }
+            
+            console.log(`地图已更新，显示预约总数: ${collectedData.records.length}`);
+        }
+
+        // 页面加载完成
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('养老服务预约数据采集系统已就绪');
+            
+            // 初始化地图可视化
+            await initMapVisualization();
+            
+            // 初始化列选择器
+            initColumnSelector();
+        });
+
+        // 初始化地图可视化
+        async function initMapVisualization() {
+            try {
+                // 动态加载地图可视化组件
+                const script = document.createElement('script');
+                script.src = '/static/js/address_map_visualizer.js';
+                await new Promise((resolve, reject) => {
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error('地图组件加载失败'));
+                    document.head.appendChild(script);
+                });
+                
+                // 初始化地图
+                mapVisualizer = new AddressMapVisualizer('addressMap');
+                await mapVisualizer.initMap();
+                console.log('地图可视化初始化完成');
+            } catch (error) {
+                console.error('地图初始化失败:', error);
+                // 显示友好的错误提示
+                const mapContainer = document.getElementById('addressMap');
+                if (mapContainer) {
+                    mapContainer.innerHTML = `
+                        <div class="d-flex flex-column justify-content-center align-items-center h-100 text-muted">
+                            <i class="fas fa-map-marked-alt fa-3x mb-3"></i>
+                            <p>地图初始化失败</p>
+                            <small>${error.message}</small>
+                            <button class="btn btn-sm btn-outline-primary mt-2" onclick="location.reload()">
+                                <i class="fas fa-redo me-1"></i>刷新重试
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // 初始化列选择器
+        function initColumnSelector() {
+            const columnOptions = document.getElementById('columnOptions');
+            
+            // 生成列选项
+            Object.keys(columnSettings).forEach(column => {
+                const li = document.createElement('li');
+                li.className = 'dropdown-item';
+                li.innerHTML = `
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="col_${column}" 
+                               ${columnSettings[column] ? 'checked' : ''}
+                               onchange="toggleColumn('${column}', this.checked)">
+                        <label class="form-check-label" for="col_${column}">${column}</label>
+                    </div>
+                `;
+                columnOptions.appendChild(li);
+            });
+        }
+
+        // 切换列显示
+        function toggleColumn(column, isVisible) {
+            columnSettings[column] = isVisible;
+            if (collectedData) {
+                renderTable(collectedData.records);
+            }
+        }
+
+        // 地图视图切换
+        async function toggleMapView(viewType) {
+            if (!mapVisualizer || !collectedData) {
+                alert('请先采集数据');
+                return;
+            }
+            
+            const addressData = collectedData.records.map(record => ({
+                address: record['服务地址'],
+                name: record['姓名'],
+                phone: record['人员手机号'],
+                serviceType: record['预约服务类型'],
+                appointmentTime: record['预约时间']
+            })).filter(item => item.address);
+            
+            if (addressData.length === 0) {
+                alert('没有可显示的地址数据');
+                return;
+            }
+            
+            try {
+                // 禁用按钮防止重复点击
+                const pointBtn = document.querySelector('button[onclick="toggleMapView(\'points\')"]');
+                const heatmapBtn = document.querySelector('button[onclick="toggleMapView(\'heatmap\')"]');
+                
+                if (pointBtn) pointBtn.disabled = true;
+                if (heatmapBtn) heatmapBtn.disabled = true;
+                
+                showLoading('地图处理中', `正在${viewType === 'points' ? '显示点位' : '生成热力图'}，共${Math.min(addressData.length, viewType === 'points' ? 50 : 100)}个数据点...`, 30);
+                
+                console.log(`开始${viewType === 'points' ? '点位显示' : '热力图'}处理`);
+                
+                if (viewType === 'points') {
+                    await mapVisualizer.showAddressPoints(addressData);
+                } else if (viewType === 'heatmap') {
+                    await mapVisualizer.showHeatmap(addressData);
+                }
+                
+                hideLoading();
+                console.log(`${viewType === 'points' ? '点位显示' : '热力图'}完成`);
+                
+                // 显示成功消息
+                const successMsg = viewType === 'points' 
+                    ? `成功显示 ${mapVisualizer.markers.length} 个服务点位`
+                    : '热力图生成完成';
+                alert(successMsg);
+                
+            } catch (error) {
+                hideLoading();
+                console.error('地图显示失败:', error);
+                
+                // 提供友好的错误提示
+                let errorMessage = '地图显示失败';
+                if (error.message.includes('INVALID_USER_KEY')) {
+                    errorMessage = '地图API密钥无效，请联系管理员';
+                } else if (error.message.includes('插件未加载')) {
+                    errorMessage = '地图功能组件加载失败，请刷新页面重试';
+                } else if (error.message.includes('超时')) {
+                    errorMessage = '地图加载超时，请检查网络连接';
+                } else if (error.message.includes('没有有效的地理坐标数据')) {
+                    errorMessage = '地址数据无法定位，请检查地址信息';
+                }
+                
+                alert(errorMessage);
+                
+            } finally {
+                // 重新启用按钮
+                setTimeout(() => {
+                    if (pointBtn) pointBtn.disabled = false;
+                    if (heatmapBtn) heatmapBtn.disabled = false;
+                }, 1000);
+            }
+        }
+    </script>
+</body>
+</html>
