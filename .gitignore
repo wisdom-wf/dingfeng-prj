@@ -1,0 +1,69 @@
+# 系统生成的文件
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+node_modules/
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+.env
+__pycache__/
+venv/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+__pycache__/
+*.egg-info/
+# IDE配置
+.idea/
+# 开发环境配置
+.env
+# 虚拟环境
+venv/
+# Python编译缓存
+__pycache__/
+# Mac系统文件
+.DS_Store
+# Windows缩略图
+Thumbs.db
+# Windows配置文件
+desktop.ini
+# 编辑器配置
+.vscode/
+# IntelliJ配置
+.idea/
+# 环境变量文件
+.env
+# 数据库文件
+*.db
+*.sqlite3
+*.db-wal
+*.db-shm
+# 缓存目录
+__pycache__/
+# 构建产物
+build/
+# 分发文件
+dist/
+# 日志文件
+*.log
+# 临时文件
+*.tmp
+# 备份文件
+*.bak
+# 其他临时文件
+__pycache__/
+# 包信息
+*.egg-info/
+# 缓存目录
+venv/
+# Python虚拟环境
