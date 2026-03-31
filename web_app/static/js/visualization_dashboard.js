@@ -3,6 +3,10 @@
 // 全局变量存储图表实例
 let charts = {};
 
+// 数据版本控制，用于检测数据变化
+let lastDataHash = '';
+let refreshTimer = null;
+
 // 数据配置
 const dashboardData = {
     summaryStats: {
@@ -669,11 +673,171 @@ function animateNumber(element, start, end, duration, delay, decimals = 0, suffi
 
 // 自动刷新数据
 function startAutoRefresh() {
-    // 每30秒更新一次时间
-    setInterval(() => {
-        // 这里可以添加数据更新逻辑
-        console.log('数据自动刷新');
+    // 防止重复启动
+    if (refreshTimer) return;
+
+    // 立即执行一次数据获取
+    fetchAndUpdateData();
+
+    // 每30秒更新一次数据
+    refreshTimer = setInterval(() => {
+        fetchAndUpdateData();
     }, 30000);
+}
+
+// 获取并更新数据
+async function fetchAndUpdateData() {
+    try {
+        const response = await fetch('/api/recent-data');
+        if (!response.ok) throw new Error('Network response was not ok');
+
+        const result = await response.json();
+        if (result.success && result.records && result.records.length > 0) {
+            // 计算数据哈希检测变化
+            const dataHash = hashRecords(result.records);
+            if (dataHash !== lastDataHash) {
+                lastDataHash = dataHash;
+                updateChartsWithData(result.records, result.stats);
+                console.log('数据已更新，记录数:', result.records.length);
+            }
+        }
+    } catch (error) {
+        console.error('获取数据失败:', error);
+    }
+}
+
+// 计算数据哈希
+function hashRecords(records) {
+    if (!records || records.length === 0) return '';
+    const ids = records.slice(0, 50).map(r => r['预约单号'] || '').join(',');
+    let hash = 0;
+    for (let i = 0; i < ids.length; i++) {
+        const char = ids.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString();
+}
+
+// 使用新数据更新所有图表
+function updateChartsWithData(records, stats) {
+    if (!records || records.length === 0) return;
+
+    // 更新统计数值
+    if (stats) {
+        animateNumber(document.getElementById('totalAppointments'), 0, stats.total_count || records.length, 2000, 0);
+        animateNumber(document.getElementById('processedCount'), 0, stats.handled_count || 0, 2000, 200);
+        animateNumber(document.getElementById('pendingCount'), 0, stats.unhandled_count || 0, 2000, 400);
+        const rate = stats.handle_rate || '0%';
+        animateNumber(document.getElementById('processRate'), 0, parseFloat(rate), 2000, 600, 1, '%');
+    }
+
+    // 计算各维度数据
+    const serviceTypeData = calculateServiceTypeData(records);
+    const genderData = calculateGenderData(records);
+    const areaData = calculateAreaData(records);
+
+    // 更新服务类型饼图
+    if (charts.serviceType) {
+        charts.serviceType.setOption({
+            series: [{
+                data: serviceTypeData.map(item => ({
+                    name: item.name,
+                    value: item.value,
+                    itemStyle: { color: item.color }
+                }))
+            }]
+        });
+    }
+
+    // 更新性别饼图
+    if (charts.gender) {
+        charts.gender.setOption({
+            series: [{
+                data: genderData.map(item => ({
+                    name: item.name,
+                    value: item.value,
+                    itemStyle: { color: item.color }
+                }))
+            }]
+        });
+    }
+
+    // 更新地区柱状图
+    if (charts.area) {
+        charts.area.setOption({
+            series: [{
+                data: areaData.map(item => ({
+                    name: item.area,
+                    value: item.count,
+                    itemStyle: { color: item.color }
+                }))
+            }]
+        });
+    }
+
+    // 更新最近预约记录表格
+    updateRecentRecordsTable(records.slice(0, 10));
+}
+
+// 计算服务类型分布
+function calculateServiceTypeData(records) {
+    const counts = {};
+    const colors = {
+        '能力评估': '#00D4FF',
+        '上门服务': '#FF6B35',
+        '生活照料': '#39FF14'
+    };
+    records.forEach(r => {
+        const type = r['预约服务类型'] || '其他';
+        counts[type] = (counts[type] || 0) + 1;
+    });
+    return Object.entries(counts).map(([name, value]) => ({
+        name,
+        value,
+        color: colors[name] || '#7B61FF'
+    }));
+}
+
+// 计算性别分布
+function calculateGenderData(records) {
+    const male = records.filter(r => {
+        const id = r['公民身份号码'] || '';
+        return id.length === 18 && parseInt(id[16]) % 2 === 1;
+    }).length;
+    return [
+        { name: '女性', value: records.length - male, color: '#FF6B9D' },
+        { name: '男性', value: male, color: '#4FC3F7' }
+    ];
+}
+
+// 计算地区分布
+function calculateAreaData(records) {
+    const counts = {};
+    records.forEach(r => {
+        const addr = r['服务地址'] || '';
+        const area = addr.substring(0, Math.min(4, addr.length)) || '未知';
+        counts[area] = (counts[area] || 0) + 1;
+    });
+    const sorted = Object.entries(counts)
+        .map(([area, count]) => ({ area, count, color: '#00D4FF' }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6);
+    return sorted;
+}
+
+// 更新最近预约记录表格
+function updateRecentRecordsTable(records) {
+    const tableBody = document.getElementById('recordsTable');
+    if (!tableBody) return;
+    tableBody.innerHTML = records.map((record, index) => `
+        <div class="table-row ${index % 2 === 0 ? 'even' : ''}">
+            <span class="table-cell name-cell">${record['姓名'] || ''}</span>
+            <span class="table-cell service-cell" style="color: ${getServiceColor(record['预约服务类型'])}">${record['预约服务类型'] || ''}</span>
+            <span class="table-cell time-cell">${record['预约时间'] || ''}</span>
+            <span class="table-cell status-cell" style="color: ${getStatusColor(record['处理状态'])}">${record['处理状态'] || ''}</span>
+        </div>
+    `).join('');
 }
 
 // 窗口大小变化时重绘图表

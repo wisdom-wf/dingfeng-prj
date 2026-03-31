@@ -96,13 +96,36 @@
             --danger-color: #f5222d;
             --info-color: #13c2c2;
         }
-        
+
+        /* Toast 动画 */
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
-        
+
         .main-container {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 20px;
@@ -110,7 +133,7 @@
             margin: 20px;
             backdrop-filter: blur(10px);
         }
-        
+
         .header {
             background: linear-gradient(135deg, var(--primary-color) 0%, #096dd9 100%);
             color: white;
@@ -618,9 +641,6 @@
                             <button class="btn btn-outline-info" onclick="clearInput()">
                                 <i class="fas fa-trash me-2"></i>清空输入
                             </button>
-                            <button class="btn btn-outline-success" onclick="openVisualization()" id="vizBtn" disabled>
-                                <i class="fas fa-chart-bar me-2"></i>数据可视化
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -777,6 +797,57 @@
         const REFRESH_INTERVAL = 120;        // 刷新间隔（秒）
         let savedCurlCommands = [];         // 保存的多个curl命令用于自动刷新
         let lastDataHash = '';              // 上次数据哈希值，用于检测变化
+
+        // Toast通知函数
+        function showToast(message, type = 'info') {
+            const toastId = 'toast_' + Date.now();
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-times-circle',
+                warning: 'fa-exclamation-triangle',
+                info: 'fa-info-circle'
+            };
+            const colors = {
+                success: '#52c41a',
+                error: '#f5222d',
+                warning: '#faad14',
+                info: '#1890ff'
+            };
+            const icon = icons[type] || icons.info;
+            const color = colors[type] || colors.info;
+
+            const toastHtml = `
+            <div id="${toastId}" style="
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: rgba(10, 14, 40, 0.98);
+                border: 1px solid ${color};
+                border-radius: 12px;
+                padding: 16px 24px;
+                z-index: 10000;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                animation: slideIn 0.3s ease;
+                max-width: 400px;
+            ">
+                <i class="fas ${icon}" style="color: ${color}; font-size: 1.5rem;"></i>
+                <span style="color: #C8E0F4;">${message}</span>
+            </div>`;
+
+            document.body.insertAdjacentHTML('beforeend', toastHtml);
+
+            // 自动移除
+            setTimeout(() => {
+                const toast = document.getElementById(toastId);
+                if (toast) {
+                    toast.style.animation = 'slideOut 0.3s ease';
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, 3500);
+        }
         
         // 计算数据哈希值
         function calculateDataHash(data) {
@@ -1068,33 +1139,7 @@
                 }
             }
         }
-        
-        // 打开可视化页面
-        function openVisualization() {
-            if (collectedData && collectedData.records && collectedData.records.length > 0) {
-                // 将数据存储到localStorage以便可视化页面使用
-                localStorage.setItem('dashboardData', JSON.stringify(collectedData));
-                window.open('/visualization', '_blank');
-            } else {
-                alert('请先采集数据后再打开可视化页面');
-            }
-        }
-        
-        // 更新可视化按钮状态
-        function updateVizButtonState() {
-            const vizBtn = document.getElementById('vizBtn');
-            if (vizBtn) {
-                if (collectedData && collectedData.records && collectedData.records.length > 0) {
-                    vizBtn.disabled = false;
-                    vizBtn.classList.remove('btn-outline-success');
-                    vizBtn.classList.add('btn-success');
-                } else {
-                    vizBtn.disabled = true;
-                    vizBtn.classList.remove('btn-success');
-                    vizBtn.classList.add('btn-outline-success');
-                }
-            }
-        }
+
         let columnSettings = {
             '序号': true,  // 添加序号列
             '姓名': true,
@@ -1204,7 +1249,7 @@
             const curlCommand = document.getElementById('curlInput').value.trim();
             
             if (!curlCommand) {
-                alert('请输入curl命令');
+                showToast('请输入curl命令', 'warning');
                 return;
             }
 
@@ -1281,7 +1326,7 @@
             } catch (error) {
                 hideLoading();
                 console.error('采集错误:', error);
-                alert(`采集过程中发生错误: ${error.message}`);
+                showToast(`采集失败: ${error.message}`, 'error');
             }
         }
 
@@ -1303,16 +1348,16 @@
             
             // 渲染表格
             renderTable(data.records);
-            
-            // 更新可视化按钮状态
-            updateVizButtonState();
         }
 
         // 渲染图表
         function renderCharts(data) {
-            // 处理状态饼图
-            const statusChart = echarts.init(document.getElementById('statusChart'));
-            statusChart.setOption({
+            // 处理状态饼图 - 复用已有实例或新建
+            const statusChartDom = document.getElementById('statusChart');
+            if (!charts.statusChart) {
+                charts.statusChart = echarts.init(statusChartDom);
+            }
+            charts.statusChart.setOption({
                 tooltip: {
                     trigger: 'item',
                     formatter: '{a} <br/>{b}: {c} ({d}%)'
@@ -1339,13 +1384,16 @@
                 }]
             });
 
-            // 服务类型柱状图
-            const serviceChart = echarts.init(document.getElementById('serviceChart'));
+            // 服务类型柱状图 - 复用已有实例或新建
+            const serviceChartDom = document.getElementById('serviceChart');
+            if (!charts.serviceChart) {
+                charts.serviceChart = echarts.init(serviceChartDom);
+            }
             const serviceData = Object.entries(data.stats.service_types)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 10);
             
-            serviceChart.setOption({
+            charts.serviceChart.setOption({
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: {
@@ -1376,13 +1424,16 @@
                 }]
             });
 
-            // 时间趋势图
-            const timeChart = echarts.init(document.getElementById('timeChart'));
+            // 时间趋势图 - 复用已有实例或新建
+            const timeChartDom = document.getElementById('timeChart');
+            if (!charts.timeChart) {
+                charts.timeChart = echarts.init(timeChartDom);
+            }
             const timeData = Object.entries(data.stats.daily_stats)
                 .sort((a, b) => a[0].localeCompare(b[0]))
                 .slice(-30); // 最近30天
             
-            timeChart.setOption({
+            charts.timeChart.setOption({
                 tooltip: {
                     trigger: 'axis'
                 },
@@ -1403,9 +1454,6 @@
                     }
                 }]
             });
-
-            // 保存图表实例
-            charts = { statusChart, serviceChart, timeChart };
 
             // 更新地图显示预约总数
             updateMapWithReservationCount();
@@ -1761,7 +1809,7 @@
         // 导出CSV
         function exportCSV() {
             if (!collectedData) {
-                alert('请先采集数据');
+                showToast('请先采集数据', 'warning');
                 return;
             }
             
@@ -1786,7 +1834,7 @@
         // 导出Excel
         function exportExcel() {
             if (!collectedData) {
-                alert('请先采集数据');
+                showToast('请先采集数据', 'warning');
                 return;
             }
             
@@ -1901,7 +1949,7 @@
         // 地图视图切换
         async function toggleMapView(viewType) {
             if (!mapVisualizer || !collectedData) {
-                alert('请先采集数据');
+                showToast('请先采集数据', 'warning');
                 return;
             }
             
@@ -1914,7 +1962,7 @@
             })).filter(item => item.address);
             
             if (addressData.length === 0) {
-                alert('没有可显示的地址数据');
+                showToast('没有可显示的地址数据', 'warning');
                 return;
             }
             
@@ -1940,15 +1988,15 @@
                 console.log(`${viewType === 'points' ? '点位显示' : '热力图'}完成`);
                 
                 // 显示成功消息
-                const successMsg = viewType === 'points' 
+                const successMsg = viewType === 'points'
                     ? `成功显示 ${mapVisualizer.markers.length} 个服务点位`
                     : '热力图生成完成';
-                alert(successMsg);
-                
+                showToast(successMsg, 'success');
+
             } catch (error) {
                 hideLoading();
                 console.error('地图显示失败:', error);
-                
+
                 // 提供友好的错误提示
                 let errorMessage = '地图显示失败';
                 if (error.message.includes('INVALID_USER_KEY')) {
@@ -1960,8 +2008,8 @@
                 } else if (error.message.includes('没有有效的地理坐标数据')) {
                     errorMessage = '地址数据无法定位，请检查地址信息';
                 }
-                
-                alert(errorMessage);
+
+                showToast(errorMessage, 'error');
                 
             } finally {
                 // 重新启用按钮

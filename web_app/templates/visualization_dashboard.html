@@ -325,17 +325,19 @@
         // 使用传入数据更新仪表板
         function updateDashboardWithData(data) {
             if (!data || !data.records) return;
-            
+
             // 更新KPI数据
             const stats = calculateStats(data.records);
             updateKPIValues(stats);
-            
-            // 更新图表数据
-            updateChartData(data.records);
-            
+
+            // 更新图表数据 - 调用全局函数
+            if (typeof window.updateChartsWithData === 'function') {
+                window.updateChartsWithData(data.records, stats);
+            }
+
             // 更新表格数据
             updateTableData(data.records);
-            
+
             console.log('仪表板数据已更新:', stats);
         }
         
@@ -362,11 +364,11 @@
             animateNumber(document.getElementById('processRate'), 0, parseFloat(stats.rate), 2000, 600, 1, '%');
         }
         
-        // 更新图表数据
+        // 更新图表数据 - 调用全局函数（由 visualization_dashboard.js 提供）
         function updateChartData(records) {
-            // 这里可以更新各个图表的数据
-            // 例如重新绘制饼图、柱状图等
-            console.log('更新图表数据，记录数:', records.length);
+            if (typeof window.updateChartsWithData === 'function') {
+                window.updateChartsWithData(records, null);
+            }
         }
         
         // 更新表格数据
