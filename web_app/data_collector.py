@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 class ReservationDataCollector:
     """预约数据采集器"""
     
+    PAGE_SIZE = 500  # 单页数据容量，减少请求次数
+    
     def __init__(self):
         self.base_url = "https://ylfw.mca.gov.cn/ylapi/ylptjg/personServiceApply/reservationPage"
         self.session = requests.Session()
@@ -87,6 +89,7 @@ class ReservationDataCollector:
         # 构建请求数据
         data = config['data'].copy()
         data['current'] = str(page)
+        data['size'] = str(self.PAGE_SIZE)  # 单页数据容量，减少请求次数
         data['ifHandle'] = str(if_handle)
         
         # 设置状态标签
@@ -202,6 +205,11 @@ class ReservationDataCollector:
                     break
                     
                 all_records.extend(records)
+                
+                # 返回数据量小于 PAGE_SIZE，说明已是最后一页，无需再请求
+                if len(records) < self.PAGE_SIZE:
+                    break
+                
                 page += 1
                 time.sleep(0.5)  # 避免请求过快
         
@@ -407,7 +415,7 @@ if __name__ == "__main__":
   -H 'sec-ch-ua: "Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"' \\
   -H 'sec-ch-ua-mobile: ?0' \\
   -H 'sec-ch-ua-platform: "macOS"' \\
-  --data-raw 'current=1&size=20&ifHandle=1'"""
+  --data-raw 'current=1&size=500&ifHandle=1'"""
     
     try:
         # 采集数据
